@@ -1,0 +1,61 @@
+import json
+from appwrite.client import Client
+from appwrite.services.databases import Databases
+from appwrite.exception import AppwriteException
+
+def parse_event(req_body):
+    """Parst das JSON, das Appwrite beim Aufruf sendet."""
+    try:
+        return json.loads(req_body)
+    except:
+        return {}
+
+def main(req, res):
+    # Event-Daten vom Request holen
+    event_data = parse_event(req.body)
+
+    # userId des Profils, das abgefragt werden soll
+    target_user_id = event_data.get("targetUserId")
+    requester_id = event_data.get("requesterId")  # optional, für privacy checking
+
+    if not target_user_id:
+        return res.json({"error": "Missing targetUserId"}, status=400)
+
+    # Appwrite Client
+    client = Client()
+    client.set_endpoint("http://87.237.52.193:8080/v1")
+    client.set_project("690b336e0021a28c8667")
+    client.set_key("standard_ace33873d572ee352eadaba36c179403be7c9989011d72ef2c276e717becbdd223c44d84f57e6120bac3b837906575ce5b44839e2e663f69aed77750a158c009cb83f6ed1c97db26379784889dc60ff104652860c6c7e8ea49ced20321158d0b497fc09a4d4f8363a2ff5116e921fc523df7b092baf4188a870349801fdd9094")
+
+    databases = Databases(client)
+
+    try:
+        # Profil aus der Datenbank laden
+        profile = databases.get_document(
+            database_id="690b69b50039d26ff931",
+            collection_id="profile",
+            document_id=target_user_id
+        )
+    except AppwriteException as e:
+        return res.json({"error": str(e)}, status=404)
+
+    # Sichtbarkeit prüfen
+    privacy = profile.get("privacyLevel", "public")
+
+    visible_profile = {
+        "userId": target_user_id,
+        "username": profile.get("username"),
+    }
+
+    # ↓↓↓ Privacy-Logik ↓↓↓
+    if privacy == "public":
+        visible_profile["picture"] = profile.get("picture")
+
+    elif privacy == "friends":
+        if requester_id and requester_id in profile.get("friends", []):
+            visible_profile["picture"] = profile.get("picture")
+
+    elif privacy == "private":
+        pass  # Nur ID und Username bleiben sichtbar
+
+    return res.json(visible_profile, status=200)
