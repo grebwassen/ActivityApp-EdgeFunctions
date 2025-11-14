@@ -2,6 +2,7 @@ import json
 from appwrite.client import Client
 from appwrite.services.databases import Databases
 from appwrite.exception import AppwriteException
+from appwrite.query import Query
 
 def parse_event(req_body):
     """Parst das JSON, das Appwrite beim Aufruf sendet."""
@@ -11,17 +12,14 @@ def parse_event(req_body):
         return {}
 
 def main(req, res):
-    # Event-Daten vom Request holen
     event_data = parse_event(req.body)
 
-    # userId des Profils, das abgefragt werden soll
     target_user_id = event_data.get("targetUserId")
-    requester_id = event_data.get("requesterId")  # optional, für privacy checking
+    requester_id = event_data.get("requesterId")
 
     if not target_user_id:
         return res.json({"error": "Missing targetUserId"}, status=400)
 
-    # Appwrite Client
     client = Client()
     client.set_endpoint("http://87.237.52.193:8080/v1")
     client.set_project("690b336e0021a28c8667")
@@ -30,16 +28,19 @@ def main(req, res):
     databases = Databases(client)
 
     try:
-        # Profil aus der Datenbank laden
-        profile = databases.get_document(
+        response = databases.list_documents(
             database_id="690b69b50039d26ff931",
             collection_id="profile",
-            document_id=target_user_id
+            queries=[Query.equal("userId", target_user_id)]
         )
+        if len(response["documents"]) == 0:
+            return res.json({"error": "Profile not found"}, status=404)
+        
+        profile = response["documents"][0]
+        
     except AppwriteException as e:
         return res.json({"error": str(e)}, status=404)
 
-    # Sichtbarkeit prüfen
     privacy = profile.get("privacyLevel", "public")
 
     visible_profile = {
@@ -47,7 +48,6 @@ def main(req, res):
         "username": profile.get("username"),
     }
 
-    # ↓↓↓ Privacy-Logik ↓↓↓
     if privacy == "public":
         visible_profile["picture"] = profile.get("picture")
 
@@ -56,6 +56,6 @@ def main(req, res):
             visible_profile["picture"] = profile.get("picture")
 
     elif privacy == "private":
-        pass  # Nur ID und Username bleiben sichtbar
+        pass
 
     return res.json(visible_profile, status=200)
