@@ -18,7 +18,8 @@ def main(req, res):
     requester_id = event_data.get("requesterId")
 
     if not target_user_id:
-        return res.json({"error": "Missing targetUserId"}, status=400)
+        res.json({"error": "Missing targetUserId"}, status=400)
+        return
 
     client = Client()
     client.set_endpoint("http://87.237.52.193:8080/v1")
@@ -34,12 +35,14 @@ def main(req, res):
             queries=[Query.equal("userId", target_user_id)]
         )
         if len(response["documents"]) == 0:
-            return res.json({"error": "Profile not found"}, status=404)
+            res.json({"error": "Profile not found"}, status=404)
+            return
         
         profile = response["documents"][0]
         
     except AppwriteException as e:
-        return res.json({"error": str(e)}, status=404)
+        res.json({"error": str(e)}, status=404)
+        return
 
     privacy = profile.get("privacyLevel", "public")
 
@@ -58,4 +61,4 @@ def main(req, res):
     elif privacy == "private":
         pass
 
-    return res.json(visible_profile, status=200)
+    res.json(visible_profile, status=200)
